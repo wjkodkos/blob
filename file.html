@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件数据合并</title>
+    <style>
+        #progress-container {
+            width: 80%;
+            margin: 20px auto;
+            height: 20px;
+            background-color: #f3f3f3;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            position: relative;
+        }
+        #progress-bar {
+            height: 100%;
+            background-color: #4caf50;
+            width: 0%;
+            border-radius: 10px;
+            transition: width 0.3s ease;
+        }
+        #progress-text {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            line-height: 20px;
+            font-size: 12px;
+            color: #000;
+        }
+        #speed-text {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #555;
+        }
+    </style>
+    <script>
+        // 文件 URL 数组
+        const fileUrls = ['https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0001.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0002.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0003.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0004.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0005.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0006.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0007.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0008.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0009.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0010.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0011.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0012.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0013.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0014.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0015.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0016.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0017.zip', ]; //文件切片
+
+        // 提取合并后的文件名
+        function getMergedFilename(urls) {
+            const firstUrl = urls[0];
+            const filename = firstUrl.split('/').pop();
+            return filename.replace(/^[a-zA-Z0-9]{8}/, '').replace(/_part\d+\.zip$/, '.zip');
+        }
+
+        // 更新进度条
+        function updateProgressBar(progress, total) {
+            const percentage = Math.round((progress / total) * 100);
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            progressBar.style.width = `${percentage}%`;
+            progressText.textContent = `${percentage}%`;
+        }
+
+        // 显示下载速度
+        function updateSpeed(sizeInBytes, timeInSeconds) {
+            let speedText = '';
+            const sizeInKBps = sizeInBytes / 1024 / timeInSeconds;
+
+            if (sizeInKBps >= 1024) {
+                const sizeInMBps = (sizeInKBps / 1024).toFixed(2);
+                speedText = `当前下载速度: ${sizeInMBps} MB/s`;
+            } else {
+                speedText = `当前下载速度: ${sizeInKBps.toFixed(2)} KB/s`;
+            }
+
+            document.getElementById('speed-text').textContent = speedText;
+        }
+
+        // 以二进制形式加载文件并记录下载时间
+        async function fetchFileAsBinary(url) {
+            try {
+                const startTime = performance.now(); // 开始时间
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch ${url}: ${response.status}`);
+                }
+                const buffer = await response.arrayBuffer();
+                const endTime = performance.now(); // 结束时间
+
+                // 计算下载速度
+                const sizeInBytes = buffer.byteLength;
+                const timeInSeconds = (endTime - startTime) / 1000;
+                updateSpeed(sizeInBytes, timeInSeconds);
+
+                return new Uint8Array(buffer);
+            } catch (error) {
+                console.error(error);
+                return null;
+            }
+        }
+
+        // 加载文件并合并数据
+        async function mergeFiles() {
+            let mergedData = [];
+            const totalFiles = fileUrls.length;
+
+            for (let i = 0; i < totalFiles; i++) {
+                const url = fileUrls[i];
+                const fileData = await fetchFileAsBinary(url);
+                if (fileData) {
+                    mergedData = mergedData.concat(Array.from(fileData));
+                } else {
+                    console.warn(`Failed to load file: ${url}`);
+                }
+                // 更新进度条
+                updateProgressBar(i + 1, totalFiles);
+            }
+
+            const mergedBlob = new Blob([new Uint8Array(mergedData)]);
+            console.log("合并后的数据大小:", mergedBlob.size);
+
+            // 在页面显示结果
+            const resultDiv = document.getElementById("result");
+            resultDiv.textContent = `合并后的数据大小: ${mergedBlob.size} 字节`;
+
+            // 提取合并后的文件名
+            const mergedFilename = getMergedFilename(fileUrls);
+
+            // 动态创建下载链接
+            const downloadLink = document.createElement('a');
+            downloadLink.href = URL.createObjectURL(mergedBlob);
+            downloadLink.download = mergedFilename;
+            downloadLink.textContent = `点击下载合并后的文件: ${mergedFilename}`;
+            downloadLink.style.display = 'block';
+            resultDiv.appendChild(downloadLink);
+        }
+
+        // 页面加载时执行
+        window.onload = mergeFiles;
+    </script>
+</head>
+<body>
+    <h1>文件数据合并</h1>
+    <div id="progress-container">
+        <div id="progress-bar"></div>
+        <div id="progress-text">0%</div>
+    </div>
+    <div id="speed-text">当前下载速度: --</div>
+    <div id="result">正在加载并合并文件数据...</div>
+</body>
+</html>
