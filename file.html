@@ -36,9 +36,22 @@
             color: #555;
         }
     </style>
+</head>
+<body>
+    <h1>文件数据合并</h1>
+    <div id="progress-container">
+        <div id="progress-bar"></div>
+        <div id="progress-text">0%</div>
+    </div>
+    <div id="speed-text">当前下载速度: --</div>
+    <div id="result">正在加载并合并文件数据...</div>
+
     <script>
-        // 文件 URL 数组
+ // 文件 URL 数组
         const fileUrls = ['https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0001.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0002.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0003.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0004.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0005.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0006.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0007.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0008.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0009.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0010.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0011.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0012.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0013.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0014.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0015.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0016.zip', 'https://wjkodkos.github.io/blob/WFpbe5aHblob下载测试70m.dmg_part0017.zip', ]; //文件切片
+
+
+        const MAX_RETRIES = 3; // 最大重试次数
 
         // 提取合并后的文件名
         function getMergedFilename(urls) {
@@ -71,57 +84,63 @@
             document.getElementById('speed-text').textContent = speedText;
         }
 
-        // 以二进制形式加载文件并记录下载时间
-        async function fetchFileAsBinary(url) {
-            try {
-                const startTime = performance.now(); // 开始时间
-                const response = await fetch(url);
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch ${url}: ${response.status}`);
+        // 下载文件切片（支持重试）
+        async function fetchFileWithRetry(url, retries = MAX_RETRIES) {
+            while (retries > 0) {
+                try {
+                    const startTime = performance.now(); // 开始时间
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    const buffer = await response.arrayBuffer();
+                    const endTime = performance.now(); // 结束时间
+
+                    // 计算下载速度
+                    const sizeInBytes = buffer.byteLength;
+                    const timeInSeconds = (endTime - startTime) / 1000;
+                    updateSpeed(sizeInBytes, timeInSeconds);
+
+                    return new Uint8Array(buffer);
+                } catch (error) {
+                    console.warn(`Failed to download ${url}, retries left: ${retries - 1}`);
+                    retries -= 1;
                 }
-                const buffer = await response.arrayBuffer();
-                const endTime = performance.now(); // 结束时间
-
-                // 计算下载速度
-                const sizeInBytes = buffer.byteLength;
-                const timeInSeconds = (endTime - startTime) / 1000;
-                updateSpeed(sizeInBytes, timeInSeconds);
-
-                return new Uint8Array(buffer);
-            } catch (error) {
-                console.error(error);
-                return null;
             }
+            console.error(`Failed to download ${url} after maximum retries.`);
+            return null; // 返回空表示下载失败
         }
 
-        // 加载文件并合并数据
+        // 合并文件切片
         async function mergeFiles() {
-            let mergedData = [];
             const totalFiles = fileUrls.length;
+            const fileDataArray = new Array(totalFiles); // 按顺序存储切片数据
+            let downloadedCount = 0;
 
             for (let i = 0; i < totalFiles; i++) {
-                const url = fileUrls[i];
-                const fileData = await fetchFileAsBinary(url);
+                const fileData = await fetchFileWithRetry(fileUrls[i]);
                 if (fileData) {
-                    mergedData = mergedData.concat(Array.from(fileData));
-                } else {
-                    console.warn(`Failed to load file: ${url}`);
+                    fileDataArray[i] = fileData; // 按顺序存储切片数据
+                    downloadedCount += 1;
                 }
-                // 更新进度条
-                updateProgressBar(i + 1, totalFiles);
+                updateProgressBar(downloadedCount, totalFiles); // 更新进度条
             }
 
-            const mergedBlob = new Blob([new Uint8Array(mergedData)]);
-            console.log("合并后的数据大小:", mergedBlob.size);
+            // 检查是否所有切片都下载成功
+            if (fileDataArray.some(data => data === undefined)) {
+                document.getElementById("result").textContent = "部分切片下载失败，无法合并。";
+                return;
+            }
 
-            // 在页面显示结果
-            const resultDiv = document.getElementById("result");
-            resultDiv.textContent = `合并后的数据大小: ${mergedBlob.size} 字节`;
+            // 合并所有切片
+            const mergedBlob = new Blob(fileDataArray);
+            console.log("合并后的数据大小:", mergedBlob.size);
 
             // 提取合并后的文件名
             const mergedFilename = getMergedFilename(fileUrls);
 
             // 动态创建下载链接
+            const resultDiv = document.getElementById("result");
+            resultDiv.textContent = `合并后的数据大小: ${mergedBlob.size} 字节`;
+
             const downloadLink = document.createElement('a');
             downloadLink.href = URL.createObjectURL(mergedBlob);
             downloadLink.download = mergedFilename;
@@ -133,14 +152,5 @@
         // 页面加载时执行
         window.onload = mergeFiles;
     </script>
-</head>
-<body>
-    <h1>文件数据合并</h1>
-    <div id="progress-container">
-        <div id="progress-bar"></div>
-        <div id="progress-text">0%</div>
-    </div>
-    <div id="speed-text">当前下载速度: --</div>
-    <div id="result">正在加载并合并文件数据...</div>
 </body>
 </html>
